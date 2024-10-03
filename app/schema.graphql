@@ -1,0 +1,31 @@
+type OrderItem {
+    id: ID!
+    product_id: Int!
+    quantity: Int!
+}
+
+type Order {
+    id: ID!
+    user_id: Int!
+    total_amount: Float!
+    status: String!
+    items: [OrderItem!]!
+}
+
+type Query {
+  allOrders: [Order!]!
+}
+
+input OrderItemInput {
+  product_id: Int!
+  quantity: Int!
+}
+
+type Mutation {
+  createOrder(user_id: Int!, order_items: [OrderItemInput!]!): OrderResponse!
+}
+
+type OrderResponse {
+  success: Boolean!
+  order: Order
+}
