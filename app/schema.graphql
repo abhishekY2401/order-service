@@ -27,5 +27,6 @@ type Mutation {
 
 type OrderResponse {
   success: Boolean!
+  errors: [String]
   order: Order
 }
