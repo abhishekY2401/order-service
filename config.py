@@ -12,8 +12,8 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.environ['JWT_SECRET_KEY']
-    ORDER_PLACED_QUEUE = "order_placed"
-    ORDER_SHIPPED_QUEUE = "order_shipped"
+    ORDER_PLACED_QUEUE = "order.placed"
+    ORDER_SHIPPED_QUEUE = "order.shipped"
 
 
 class DevelopmentConfig(Config):
