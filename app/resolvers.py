@@ -1,5 +1,5 @@
 from ariadne import MutationType, QueryType
-from app.models import Order, OrderItem
+from app.models import Order, OrderItem, OrderUser, ProductCatalog
 from app.rabbitmq import publish_event
 from app.utils import fetch_product_prices
 from app.extensions import db
@@ -38,8 +38,34 @@ def fetch_order(_, info, id):
 @mutation.field("createOrder")
 def handle_create_order(_, info, user_id, order_items):
     try:
+
+        # Check if all the products are in stock
+        for item in order_items:
+            product_id = item['product_id']
+            order_quantity = item['quantity']
+
+            product = ProductCatalog.query.filter_by(
+                product_id=product_id).first()
+
+            if product is None:
+                logging.error(f"Product with ID {product_id} does not exist.")
+                return {
+                    "success": False,
+                    "errors": [f"Product with ID {product_id} not found."]
+                }
+
+            if product.quantity < order_quantity:
+                logging.error(
+                    f"Requested quantity of product ID {product_id} not present in stock. "
+                    f"Available: {product.quantity}, Requested: {order_quantity}")
+                return {
+                    "success": False,
+                    "errors": [f"Requested quantity of product ID {product_id} not available."]
+                }
+
         # Grouping all the product ids to make a single request and fetch all the prices
         product_ids = [item['product_id'] for item in order_items]
+
         logging.info(f"extract all product ids: {product_ids}")
 
         # Fetch product prices from the Product Microservice
@@ -66,15 +92,23 @@ def handle_create_order(_, info, user_id, order_items):
             logging.info(
                 f"determine the total amount for the order: {total_amount}")
 
-            # Create order items
-            order_item = OrderItem(product_id=int(
-                product_id), quantity=quantity)
-            db.session.add(order_item)
-            order_item_objects.append(order_item)
-            logging.info(f"created an order item for product id: {product_id}")
+        user = OrderUser.query.filter_by(user_id=user_id).first()
+        address = user.address
 
         # Create the new order
-        new_order = Order(user_id=user_id, total_amount=total_amount)
+        new_order = Order(
+            user_id=user_id, total_amount=total_amount, address=address)
+
+        for item in order_items:
+            product_id = item['product_id']
+            quantity = item['quantity']
+
+            # Create order items
+            order_item = OrderItem(product_id=product_id, quantity=quantity)
+            db.session.add(order_item)
+
+            order_item_objects.append(order_item)
+            logging.info(f"created an order item for product id: {product_id}")
 
         # Add the order items to the order
         new_order.items = order_item_objects
@@ -90,7 +124,9 @@ def handle_create_order(_, info, user_id, order_items):
             'total_amount': new_order.total_amount,
             'items': [item.to_dict() for item in new_order.items]
         })
-        publish_event(Config.ORDER_PLACED_QUEUE, event_data)
+
+        publish_event(exchange_name="event_exchange",
+                      routing_key=Config.ORDER_PLACED_QUEUE, message=event_data)
         logging.info(f"emit event to queue: {event_data}")
 
         return {
@@ -107,6 +143,6 @@ def handle_create_order(_, info, user_id, order_items):
         }
 
 
-@mutation.field("updateOrderStatus")
-def func():
-    pass
+# @mutation.field("updateOrderStatus")
+# def func():
+#     pass
