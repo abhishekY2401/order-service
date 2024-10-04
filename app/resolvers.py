@@ -1,6 +1,7 @@
 from ariadne import MutationType, QueryType
 from app.models import Order, OrderItem, OrderUser, ProductCatalog
 from app.rabbitmq import publish_event
+from app.middleware import jwt_required
 from app.utils import fetch_product_prices
 from app.extensions import db
 from config import Config
@@ -12,6 +13,7 @@ mutation = MutationType()
 
 
 @query.field("allOrders")
+@jwt_required
 def fetch_all_orders(*_):
     try:
         orders = Order.query.all()
@@ -21,6 +23,8 @@ def fetch_all_orders(*_):
         return []
 
 
+@query.field("order")
+@jwt_required
 def fetch_order(_, info, id):
     try:
         # product_id = info.context.get("product_id")
@@ -36,6 +40,7 @@ def fetch_order(_, info, id):
 
 
 @mutation.field("createOrder")
+@jwt_required
 def handle_create_order(_, info, user_id, order_items):
     try:
 
