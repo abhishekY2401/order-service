@@ -5,6 +5,7 @@ from app.middleware import jwt_required
 from app.utils import fetch_product_prices
 from app.extensions import db
 from config import Config
+from flask import request
 import logging
 import json
 
@@ -17,10 +18,22 @@ mutation = MutationType()
 def fetch_all_orders(*_):
     try:
         orders = Order.query.all()
-        return orders
-    except Exception as e:
+
+        order_list = [order.to_dict() for order in orders]
+        logging.info(f"serialized all the users: {order_list}")
+
+        return {
+            "success": True,
+            "message": "Orders fetched successfully.",
+            "orders": order_list
+        }
+    except Exception as error:
         logging.error(f"Error fetching products: {e}")
-        return []
+        return {
+            "success": False,
+            "message": str(error),
+            "orders": []
+        }
 
 
 @query.field("order")
@@ -30,11 +43,24 @@ def fetch_order(_, info, id):
         # product_id = info.context.get("product_id")
         order = Order.query.get(id)
         if not order:
-            raise Exception(f"Product with id {id} not found")
-        return order
-    except Exception as e:
-        logging.error(f"Error fetching order: {e}")
-        return None
+            return {
+                "success": False,
+                "message": f"Product with id {id} not found",
+                "orders": None
+            }
+
+        return {
+            "success": True,
+            "message": "Order fetched successfully.",
+            "orders": [order]
+        }
+    except Exception as error:
+        logging.error(f"Error fetching order: {error}")
+        return {
+            "success": False,
+            "message": str(error),
+            "orders": []
+        }
 
 # handle creation of order
 
@@ -43,7 +69,7 @@ def fetch_order(_, info, id):
 @jwt_required
 def handle_create_order(_, info, user_id, order_items):
     try:
-
+        logging.info(f"requested order items for purchase: {order_items}")
         # Check if all the products are in stock
         for item in order_items:
             product_id = item['product_id']
@@ -56,7 +82,8 @@ def handle_create_order(_, info, user_id, order_items):
                 logging.error(f"Product with ID {product_id} does not exist.")
                 return {
                     "success": False,
-                    "errors": [f"Product with ID {product_id} not found."]
+                    "message": f"Product with id {id} not found",
+                    "orders": None
                 }
 
             if product.quantity < order_quantity:
@@ -65,7 +92,8 @@ def handle_create_order(_, info, user_id, order_items):
                     f"Available: {product.quantity}, Requested: {order_quantity}")
                 return {
                     "success": False,
-                    "errors": [f"Requested quantity of product ID {product_id} not available."]
+                    "message": f"Requested quantity of product ID {product_id} not available.",
+                    "orders": None
                 }
 
         # Grouping all the product ids to make a single request and fetch all the prices
@@ -73,8 +101,12 @@ def handle_create_order(_, info, user_id, order_items):
 
         logging.info(f"extract all product ids: {product_ids}")
 
+        # fetch token from auth header
+        token = request.headers.get('Authorization').split("Bearer ")[1]
+        logging.info(f"auth token : {token}")
+
         # Fetch product prices from the Product Microservice
-        product_prices = fetch_product_prices(product_ids)
+        product_prices = fetch_product_prices(product_ids, token)
         logging.info(f"get all product prices: {product_prices}")
 
         # Calculate total amount using fetched product prices
@@ -90,7 +122,8 @@ def handle_create_order(_, info, user_id, order_items):
                 logging.info("product does not exist in product_prices")
                 return {
                     "success": False,
-                    "errors": [f"Product with ID {product_id} not found."]
+                    "message": f"Product with id {id} not found",
+                    "orders": None
                 }
 
             total_amount += product_prices[product_id] * quantity
@@ -136,7 +169,8 @@ def handle_create_order(_, info, user_id, order_items):
 
         return {
             "success": True,
-            "order": new_order.to_dict()
+            "message": "Order created successfully.",
+            "orders": [new_order.to_dict()]
         }
 
     except Exception as error:
@@ -144,7 +178,8 @@ def handle_create_order(_, info, user_id, order_items):
         logging.error(f"Error creating order: {str(error)}")
         return {
             "success": False,
-            "errors": [str(error)],
+            "message": str(error),
+            "orders": []
         }
 
 
